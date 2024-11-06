@@ -105,11 +105,9 @@ spec:html; urlPrefix: https://html.spec.whatwg.org/multipage/
     type: dfn; text: associated document; url: window-object.html#concept-document-window
     type: dfn; text: origin; url: origin.html#concept-origin
     type: dfn; text: secure context; url: secure-context
+    type: dfn; for: Document; text: visibilityState; url: interaction.html#dom-document-visibilitystate
 spec: PointerEvents; urlPrefix: https://www.w3.org/TR/pointerevents/#
     type: dfn; text: primary pointer; url: dfn-primary-pointer
-spec: PageVisibility; urlPrefix: https://www.w3.org/TR/page-visibility-2/#
-    type: dfn; text: visibilityState; url: visibilitystate-attribute
-    type: dfn; text: hidden; url: dom-visibilitystate-hidden
 
 spec: ECMAScript; urlPrefix: https://tc39.es/ecma262/#
     type: method; text: IsDetachedBuffer; url: sec-isdetachedbuffer
@@ -630,6 +628,7 @@ enum XRVisibilityState {
   readonly attribute Float32Array? supportedFrameRates;
   [SameObject] readonly attribute XRRenderState renderState;
   [SameObject] readonly attribute XRInputSourceArray inputSources;
+  [SameObject] readonly attribute XRInputSourceArray trackedSources;
   readonly attribute FrozenArray&lt;DOMString&gt; enabledFeatures;
   readonly attribute boolean isSystemKeyboardSupported;
 
@@ -831,11 +830,13 @@ When this method is invoked, the user agent MUST run the following steps:
 
 </div>
 
-Each {{XRSession}} has a <dfn>list of active XR input sources</dfn> (a [=/list=] of {{XRInputSource}}) which MUST be initially an empty [=/list=].
+Each {{XRSession}} has a <dfn>list of active XR input sources</dfn> (a [=/list=] of {{XRInputSource}}) and a <dfn>list of active XR tracked sources</dfn> (a [=/list=] of {{XRInputSource}}) which MUST both be initially an empty [=/list=].
 
 Each {{XRSession}} has an <dfn for="XRSession">XR device</dfn>, which is an [=/XR device=] set at initialization.
 
 The <dfn attribute for="XRSession">inputSources</dfn> attribute returns the {{XRSession}}'s [=list of active XR input sources=].
+
+The <dfn attribute for="XRSession">trackedSources</dfn> attribute returns the {{XRSession}}'s [=list of active XR tracked sources=].
 
 The user agent MUST monitor any [=XR input source=]s associated with the [=XRSession/XR device=], including detecting when [=XR input source=]s are added, removed, or changed.
 
@@ -848,13 +849,23 @@ NOTE: The purpose of this flag is to ensure that the [=XRSession/add input sourc
 When <dfn for="XRSession" lt="add input source">new [=XR input source=]s become available</dfn> for {{XRSession}} |session|, the user agent MUST run the following steps:
 
   1. If |session|'s [=XRSession/promise resolved=] flag is not set, abort these steps.
-  1. Let |added| be a new [=/list=].
+  1. Let |added primary sources| be a new [=/list=].
+  1. Let |added tracked sources| be a new [=/list=].
   1. For each new [=XR input source=]:
-    1. Let |inputSource| be a [=new=] {{XRInputSource}} in the [=relevant realm=] of this {{XRSession}}.
-    1. Add |inputSource| to |added|.
+    1. Let |inputSource| be a [=new=] {{XRInputSource}} in the [=relevant realm=] of this {{XRSession}}, then perform the following step:
+        <dl class="switch">
+            : If |inputSource| is a [=primary input source=]:
+            ::
+                Add |inputSource| to |added primary sources|.
+            : Otherwise:
+            ::
+                Add |inputSource| to |added tracked sources|.
+        </dl>
   1. [=Queue a task=] to perform the following steps:
-    1. [=list/Extend=] |session|'s [=list of active XR input sources=] with |added|.
-    1. Fire an {{XRInputSourcesChangeEvent}} named {{inputsourceschange!!event}} on |session| with {{XRInputSourcesChangeEvent/added}} set to |added|.
+    1. [=list/Extend=] |session|'s [=list of active XR input sources=] with |added primary sources|.
+    1. If |added primary sources| is not empty, fire an {{XRInputSourcesChangeEvent}} named {{inputsourceschange!!event}} on |session| with {{XRInputSourcesChangeEvent/added}} set to |added primary sources|.
+    1. [=list/Extend=] |session|'s [=list of active XR tracked sources=] with |added tracked sources|.
+    1. If |added tracked sources| is not empty, fire an {{XRInputSourcesChangeEvent}} named {{trackedsourceschange!!event}} on |session| with {{XRInputSourcesChangeEvent/added}} set to |added tracked sources|.
 
 </div>
 
@@ -863,13 +874,23 @@ When <dfn for="XRSession" lt="add input source">new [=XR input source=]s become 
 When any previously added <dfn for="XRSession" lt="remove input source">[=XR input source=]s are no longer available</dfn> for {{XRSession}} |session|, the user agent MUST run the following steps:
 
   1. If |session|'s [=XRSession/promise resolved=] flag is not set, abort these steps.
-  1. Let |removed| be a new [=/list=].
+  1. Let |removed primary sources| be a new [=/list=].
+  1. Let |removed tracked sources| be a new [=/list=].
   1. For each [=XR input source=] that is no longer available:
-    1. Let |inputSource| be the {{XRInputSource}} in |session|'s [=list of active XR input sources=] associated with the [=XR input source=].
-    1. Add |inputSource| to |removed|.
+    1. Let |inputSource| be the {{XRInputSource}} in |session|'s [=list of active XR input sources=] associated with the [=XR input source=], then perform the following step:
+        <dl class="switch">
+            : If |inputSource| is a [=primary input source=]:
+            ::
+                Add |inputSource| to |removed primary sources|.
+            : Otherwise:
+            ::
+                Add |inputSource| to |removed tracked sources|.
+        </dl>
   1. [=Queue a task=] to perform the following steps:
-    1. [=list/Remove=] each {{XRInputSource}} in |removed| from |session|'s [=list of active XR input sources=].
-    1. Fire an {{XRInputSourcesChangeEvent}} named {{inputsourceschange!!event}} on |session| with {{XRInputSourcesChangeEvent/removed}} set to |removed|.
+    1. [=list/Remove=] each {{XRInputSource}} in |removed primary sources| from |session|'s [=list of active XR input sources=].
+    1. If |removed primary sources| is not empty, fire an {{XRInputSourcesChangeEvent}} named {{inputsourceschange!!event}} on |session| with {{XRInputSourcesChangeEvent/removed}} set to |removed primary sources|.
+    1. [=list/Remove=] each {{XRInputSource}} in |removed tracked sources| from |session|'s [=list of active XR tracked sources=].
+    1. If |removed tracked sources| is not empty, fire an {{XRInputSourcesChangeEvent}} named {{trackedsourceschange!!event}} on |session| with {{XRInputSourcesChangeEvent/removed}} set to |removed tracked sources|.
 
 Note: The user agent MAY fire this event when an input source temporarily loses both position and orientation tracking. It is recommended that this only be done for physical handheld controller input sources. It is not recommended that this event be fired when this happens for tracked hand input sources, because this will happen often, nor is it recommended when this happens for tracker object input sources, since this makes it harder for the application to maintain a notion of identity.
 
@@ -877,24 +898,43 @@ Note: The user agent MAY fire this event when an input source temporarily loses 
 
 <div class="algorithm" data-algorithm="on-input-source-change">
 
-When the <dfn for="XRSession" export lt="change input source">{{XRInputSource/handedness}}, {{XRInputSource/targetRayMode}}, {{XRInputSource/profiles}}, or presence of a {{XRInputSource/gripSpace}} for any [=XR input source=]s change</dfn> for {{XRSession}} |session|, the user agent MUST run the following steps:
+When the <dfn for="XRSession" export lt="change input source">{{XRInputSource/handedness}}, {{XRInputSource/targetRayMode}}, {{XRInputSource/profiles}}, presence of a {{XRInputSource/gripSpace}} or the status as a [=primary input source=] or [=tracked input source=] for any [=XR input source=]s change</dfn> for {{XRSession}} |session|, the user agent MUST run the following steps:
 
   1. If |session|'s [=XRSession/promise resolved=] flag is not set, abort these steps.
-  1. Let |added| be a new [=/list=].
-  1. Let |removed| be a new [=/list=].
+  1. Let |added primary sources| be a new [=/list=].
+  1. Let |removed primary sources| be a new [=/list=].
+  1. Let |added tracked sources| be a new [=/list=].
+  1. Let |removed tracked sources| be a new [=/list=].
   1. For each changed [=XR input source=]:
-    1. Let |oldInputSource| be the {{XRInputSource}} in |session|'s [=list of active XR input sources=] previously associated with the [=XR input source=].
-    1. Let |newInputSource| be a [=new=] {{XRInputSource}} in the [=relevant realm=] of |session|.
-    1. Add |oldInputSource| to |removed|.
-    1. Add |newInputSource| to |added|.
+    1. Let |oldInputSource| be the {{XRInputSource}} in |session|'s [=list of active XR input sources=] previously associated with the [=XR input source=], then perform the following step:
+        <dl class="switch">
+            : If |oldInputSource| is a [=primary input source=] or its state changed from a [=primary input source=] to [=tracked input source=] a:
+            ::
+                Add |oldInputSource| to |removed primary sources|.
+            : Otherwise:
+            ::
+                Add |oldInputSource| to |removed tracked sources|.
+        </dl>
+    1. Let |newInputSource| be a [=new=] {{XRInputSource}} in the [=relevant realm=] of |session|, then perform the following step:
+        <dl class="switch">
+            : If |newInputSource| is a [=primary input source=] or its state changed from a [=tracked input source=] to [=primary input source=] :
+            ::
+                Add |newInputSource| to |added primary sources|.
+            : Otherwise:
+            ::
+                Add |newInputSource| to |added tracked sources|.
+        </dl>
   1. [=Queue a task=] to perform the following steps:
-    1. [=list/Remove=] each {{XRInputSource}} in |removed| from |session|'s [=list of active XR input sources=].
-    1. [=list/Extend=] |session|'s [=list of active XR input sources=] with |added|.
-    1. Fire an {{XRInputSourcesChangeEvent}} named {{inputsourceschange!!event}} on |session| with{{XRInputSourcesChangeEvent/added}} set to |added| and {{XRInputSourcesChangeEvent/removed}} set to |removed|.
+    1. [=list/Remove=] each {{XRInputSource}} in |removed primary sources| from |session|'s [=list of active XR input sources=].
+    1. [=list/Extend=] |session|'s [=list of active XR input sources=] with |added primary sources|.
+    1. If |added primary sources| or |removed primary sources| are not empty, fire an {{XRInputSourcesChangeEvent}} named {{inputsourceschange!!event}} on |session| with{{XRInputSourcesChangeEvent/added}} set to |added primary sources| and {{XRInputSourcesChangeEvent/removed}} set to |removed primary sources|.
+    1. [=list/Remove=] each {{XRInputSource}} in |removed tracked sources| from |session|'s [=list of active XR tracked sources=].
+    1. [=list/Extend=] |session|'s [=list of active XR input sources=] with |added tracked sources|.
+    1. If |added tracked sources| or |removed tracked sources| are not empty, fire an {{XRInputSourcesChangeEvent}} named {{trackedsourceschange!!event}} on |session| with {{XRInputSourcesChangeEvent/added}} set to |added tracked sources| and {{XRInputSourcesChangeEvent/removed}} set to |removed tracked sources|.
 
 </div>
 
-Each {{XRSession}} has a <dfn for="XRSession">visibility state</dfn> value, which is an enum. For [=inline sessions=] the [=XRSession/visibility state=] MUST mirror the {{Document}}'s [=visibilityState=]. For [=immersive sessions=] the [=XRSession/visibility state=] MUST be set to whichever of the following values best matches the state of session.
+Each {{XRSession}} has a <dfn for="XRSession">visibility state</dfn> value, which is an enum. For [=inline sessions=] the [=XRSession/visibility state=] MUST mirror the {{Document}}'s [=Document/visibilityState=]. For [=immersive sessions=] the [=XRSession/visibility state=] MUST be set to whichever of the following values best matches the state of session.
 
   - A state of <dfn enum-value for="XRVisibilityState">visible</dfn> indicates that imagery rendered by the {{XRSession}} can be seen by the user and {{XRSession/requestAnimationFrame()}} callbacks are processed at the [=XRSession/XR device=]'s native refresh rate. Input is processed by the {{XRSession}} normally.
 
@@ -906,7 +946,7 @@ The <dfn attribute for="XRSession">visibilityState</dfn> attribute returns the {
 
 The [=visibility state=] MAY be changed by the user agent at any time other than during the processing of an [=XR animation frame=], and the user agent SHOULD monitor the XR platform when possible to observe when session visibility has been affected external to the user agent and update the [=visibility state=] accordingly.
 
-Note: The {{XRSession}}'s [=visibility state=] does not necessarily imply the visibility of the HTML document. Depending on the system configuration the page may continue to be visible while an [=immersive session=] is active. (For example, a headset connected to a PC may continue to display the page on the monitor while the headset is viewing content from an [=immersive session=].) Developers should continue to rely on the [Page Visibility API](https://www.w3.org/TR/page-visibility-2/) to determine page visibility.
+Note: The {{XRSession}}'s [=visibility state=] does not necessarily imply the visibility of the HTML document. Depending on the system configuration the page may continue to be visible while an [=immersive session=] is active. (For example, a headset connected to a PC may continue to display the page on the monitor while the headset is viewing content from an [=immersive session=].) Developers should continue to rely on the [Page Visibility](https://html.spec.whatwg.org/multipage/interaction.html#page-visibility) to determine page visibility.
 
 Note: The {{XRSession}}'s [=visibility state=] does not affect or restrict mouse behavior on tethered sessions where 2D content is still visible while an [=immersive session=] is active. Content should consider using the [[!pointerlock]] API if it wishes to have stronger control over mouse behavior.
 
@@ -1081,8 +1121,7 @@ When an {{XRSession}} |session| receives updated [=viewer=] state for timestamp 
         1. [=XRFrame/Apply frame updates=] for |frame|.
         1. For each |entry| in |session|'s [=list of currently running animation frame callbacks=], in order:
           1. If the |entry|'s [=cancelled=] boolean is `true`, continue to the next entry.
-          1. [=Invoke the Web IDL callback function=] for |entry|, passing |now| and |frame| as the  arguments
-          1. If an exception is thrown, [=report the exception=].
+          1. [=Invoke the Web IDL callback function|Invoke=] |entry| with « |now|, |frame| » and "`report`".
         1. Set |session|'s [=list of currently running animation frame callbacks=] to the empty [=/list=].
         1. Set |frame|'s [=XRFrame/active=] boolean to `false`.
     1. If |session|'s [=pending render state=] is not `null`, [=apply the pending render state=].
@@ -1844,7 +1883,7 @@ interface XRInputSource {
   [SameObject] readonly attribute XRSpace targetRaySpace;
   [SameObject] readonly attribute XRSpace? gripSpace;
   [SameObject] readonly attribute FrozenArray&lt;DOMString&gt; profiles;
-  [SameObject] readonly attribute boolean skipRendering;
+  readonly attribute boolean skipRendering;
 };
 </pre>
 
@@ -1855,7 +1894,7 @@ The <dfn attribute for="XRInputSource">handedness</dfn> attribute describes whic
 The <dfn attribute for="XRInputSource">targetRayMode</dfn> attribute describes the method used to produce the target ray, and indicates how the application should present the target ray to the user if desired.
 
   - <dfn enum-value for="XRTargetRayMode">gaze</dfn> indicates the target ray will originate at the viewer and follow the direction it is facing. (This is commonly referred to as a "gaze input" device in the context of head-mounted displays.)
-  - <dfn enum-value for="XRTargetRayMode">tracked-pointer</dfn> indicates that the target ray originates from either a handheld device or other hand-tracking mechanism and represents that the user is using their hands or the held device for pointing. The orientation of the target ray relative to the tracked object MUST follow platform-specific ergonomics guidelines when available. In the absence of platform-specific guidance, the target ray SHOULD point in the same direction as the user's index finger if it was outstretched.
+  - <dfn enum-value for="XRTargetRayMode">tracked-pointer</dfn> indicates that the target ray originates from either a handheld device or other hand-tracking mechanism and represents that the user is using their hands or the held device for pointing. The orientation of the target ray relative to the tracked object MUST follow platform-specific ergonomics guidelines when available. In the absence of platform-specific guidance, the target ray SHOULD point in the same direction as the user's index finger if it was outstretched. If the {{XRSystem}} determines that part of the handheld device is or becomes intended to contact real-world surfaces (such as a pen tip), the target ray MUST originate at that point.
   - <dfn enum-value for="XRTargetRayMode">screen</dfn> indicates that the input source was an interaction with the canvas element associated with an inline session's output context, such as a mouse click or touch event.
   - <dfn enum-value for="XRTargetRayMode">transient-pointer</dfn> indicates that the input source was generated as part of an operating system interaction intent rather than a specific piece of hardware. Some examples are user intents based on information too sensitive to expose directly such as gaze, synthesised inputs from web driver or inputs generated by assistive technologies. This should only be used for assistive technologies if it is also used as a primary input so as to not inadvertently indicate that assistive technology is being used as per the W3C design principals.
 
@@ -1899,7 +1938,8 @@ Note: {{XRInputSource}}s in an {{XRSession}}'s {{XRSession/inputSources}} array 
 
 An [=XR input source=] is a <dfn>primary input source</dfn> if it supports a <dfn>primary action</dfn>. The [=primary action=] is a platform-specific action that, when engaged, produces {{XRSession/selectstart}}, {{XRSession/selectend}}, and {{XRSession/select}} events. Examples of possible [=primary action=]s are pressing a trigger, touchpad, or button, speaking a command, or making a hand gesture. If the platform guidelines define a recommended primary input then it should be used as the [=primary action=], otherwise the user agent is free to select one. The device MUST support at least one [=primary input source=].
 
-An [=XR input source=] is an <dfn>auxiliary input source</dfn> if it does not support a [=primary action=], for example [=transient input sources=] associated with secondary screen touches on a multitouch device.
+An [=XR input source=] is an <dfn>tracked input source</dfn> if it does not support a [=primary action=]. These inputs are primarily intended to provide pose data.
+Note: An example of a [=tracked input source=] would be tracking attachments for a users legs or a prop. Tracked hands may also be considered a [=tracked input source=] if there is no gesture recognition being performed to detect [=primary action=]s.
 
 <div class="algorithm" data-algorithm="on-input-start">
 
@@ -1966,7 +2006,7 @@ When an [=XR input source=] |source| for {{XRSession}} |session| has its [=prima
 Transient input {#transient-input}
 ---------------
 
-Some [=/XR device=]s may support <dfn>transient input sources</dfn>, where the [=XR input source=] is only meaningful while performing a <dfn>transient action</dfn>, either the [=primary action=] for a [=primary input source=], or a device-specific <dfn>auxiliary action</dfn> for an [=auxiliary input source=].
+Some [=/XR device=]s may support <dfn>transient input sources</dfn>, where the [=XR input source=] is only meaningful while performing a <dfn>transient action</dfn>, either the [=primary action=] for a [=primary input source=], or a device-specific <dfn>auxiliary action</dfn> for an [=tracked input source=].
 
 One example would be mouse, touch, or stylus input against an {{XRSessionMode/"inline"}} {{XRSession}}, which MUST produce a transient {{XRInputSource}} with a {{targetRayMode}} set to {{screen}}, treated as a [=primary action=] for the [=primary pointer=], and as a non-primary [=auxiliary action=] for a non-primary pointer.
 
@@ -2466,7 +2506,7 @@ When the user agent has to <dfn>fire an input source event</dfn> with name |name
 XRInputSourcesChangeEvent {#xrinputsourceschangeevent-interface}
 -------------------------
 
-{{XRInputSourcesChangeEvent}}s are fired to indicate changes to the {{XRInputSource}}s that are available to an {{XRSession}}.
+{{XRInputSourcesChangeEvent}}s are fired to indicate changes to the [=list of active XR input sources=] that are available to an {{XRSession}}.
 
 <pre class="idl">
 [SecureContext, Exposed=Window]
@@ -2491,7 +2531,6 @@ The <dfn attribute for="XRInputSourcesChangeEvent">added</dfn> attribute is a [=
 
 The <dfn attribute for="XRInputSourcesChangeEvent">removed</dfn> attribute is a [=/list=] of {{XRInputSource}}s that were removed from the {{XRSession}} at the time of the event.
 
-
 XRReferenceSpaceEvent {#xrreferencespaceevent-interface}
 ---------------------
 
@@ -2513,7 +2552,9 @@ dictionary XRReferenceSpaceEventInit : EventInit {
 
 The <dfn attribute for="XRReferenceSpaceEvent">referenceSpace</dfn> attribute indicates the {{XRReferenceSpace}} that generated this event.
 
-The <dfn attribute for="XRReferenceSpaceEvent">transform</dfn> attribute describes the post-event position and orientation of the {{XRReferenceSpaceEvent/referenceSpace}}'s [=native origin=] in the pre-event coordinate system.
+The optional <dfn attribute for="XRReferenceSpaceEvent">transform</dfn> attribute describes the post-event position and orientation of the {{XRReferenceSpaceEvent/referenceSpace}}'s [=native origin=] in the pre-event coordinate system. This attribute MAY be `null` if the {{XRSystem}} can't determine the delta between the old and the new coordinate system.
+
+NOTE: situations where {{XRReferenceSpaceEvent/referenceSpace}} or {{XRReferenceSpaceEventInit/referenceSpace}} can be when the headset was doffed and donned between 2 seperate locations. In such cases, if the experience relies on world-locked content, it should warn the user and reset the scene.
 
 Event Types {#event-types}
 -----------
@@ -2527,6 +2568,8 @@ A user agent MUST [=fire an event=] named <dfn event for="XRSession">visibilityc
 A user agent MUST [=fire an event=] named <dfn event for="XRSession">end</dfn> using {{XRSessionEvent}} on an {{XRSession}} when the session ends, either by the application or the user agent.
 
 A user agent MUST [=fire an event=] named <dfn event for="XRSession">inputsourceschange</dfn> using {{XRInputSourcesChangeEvent}} on an {{XRSession}} when the session's [=list of active XR input sources=] has changed.
+
+A user agent MUST [=fire an event=] named <dfn event for="XRSession">trackedsourceschange</dfn> using {{XRInputSourcesChangeEvent}} on an {{XRSession}} when the session's [=list of active XR tracked sources=] has changed.
 
 A user agent MUST [=fire an event=] named <dfn event for="XRSession">selectstart</dfn> using {{XRInputSourceEvent}} on an {{XRSession}} when one of its {{XRInputSource}}s begins its [=primary action=]. The event MUST be of type .
 
@@ -2755,8 +2798,8 @@ Fingerprinting {#fingerprinting-security}
 Given that the API describes hardware available to the user and its capabilities it will inevitably provide additional surface area for fingerprinting. While it's impossible to completely avoid this, user agents should take steps to mitigate the issue. This spec limits reporting of available hardware to only a single device at a time, which prevents using the rare cases of multiple headsets being connected as a fingerprinting signal. Also, the devices that are reported have no string identifiers and expose very little information about the devices capabilities until an XRSession is created, which requires additional protections when [=sensitive information=] will be exposed.
 
 
-Fingerprinting considerations of {{XRSystem/isSessionSupported()}} {#issessionsupported-fingerprinting}
-----------------------------------
+### Fingerprinting considerations of {{XRSystem/isSessionSupported()}} ### {#issessionsupported-fingerprinting}
+
 Because {{XRSystem/isSessionSupported()}} can be called without user activation it may be used as a fingerprinting vector.
 
 <dfn permission>"xr-session-supported"</dfn> [=powerful feature=] gates access to the {{XRSystem/isSessionSupported()}} API.
@@ -2951,6 +2994,16 @@ To <dfn>resolve the requested features</dfn> given |requiredFeatures| and |optio
 
 <h2 id="changes" class="no-num">
 Changes</h2>
+
+<h3 id="changes-from-20220331" class="no-num">
+Changes from the <a href="https://www.w3.org/TR/2022/CR-webxr-20220331/">Candidate Recommendation Snapshot, 31 March 2022</a></h3>
+
+- Expose XRSession's granted features (<a href="https://github.com/immersive-web/webxr/pull/1296">GitHub #1296</a>)
+- Add support for the isSystemKeyboardSupported attribute (<a href="https://github.com/immersive-web/webxr/pull/1314">GitHub #1314</a>)
+- Clarify getPose behavior with visibile-blurred (<a href="https://github.com/immersive-web/webxr/pull/1332">GitHub #1332</a>)
+- Transient intent addition (<a href="https://github.com/immersive-web/webxr/pull/1343">GitHub #1343</a>)
+- First draft for adding a property to XRInputSource to say it's visible elsewhere (<a href="https://github.com/immersive-web/webxr/pull/1353">GitHub #1353</a>)
+- Clarify rgb vs srgb behavior (<a href="https://github.com/immersive-web/webxr/pull/1359">GitHub #1359</a>)
 
 
 <h3 id="changes-from-20200724" class="no-num">
